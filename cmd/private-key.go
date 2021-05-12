@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"encoding/hex"
 	"flag"
+	"github.com/btcsuite/btcd/btcec"
 	"os"
 
 	"github.com/dfinity/keysmith/codec"
@@ -21,6 +23,7 @@ type PrivateKeyCmdArgs struct {
 	OutputFile *string
 	Protected  *bool
 	SeedFile   *string
+	PrivHex    *string
 }
 
 func NewPrivateKeyCmd() *PrivateKeyCmd {
@@ -30,27 +33,39 @@ func NewPrivateKeyCmd() *PrivateKeyCmd {
 		OutputFile: fset.String("o", "identity.pem", "Output file."),
 		Protected:  fset.Bool("p", false, "Password protection."),
 		SeedFile:   fset.String("f", "seed.txt", "Seed file."),
+		PrivHex:    fset.String("x", "", "private key hex str."),
 	}
 	return &PrivateKeyCmd{fset, args}
 }
 
 func (cmd *PrivateKeyCmd) Run() error {
 	cmd.FlagSet.Parse(os.Args[2:])
-	seed, err := seed.Load(*cmd.Args.SeedFile, *cmd.Args.Protected)
-	if err != nil {
-		return err
+
+	var grandchildECPrivKey *btcec.PrivateKey
+	if len(*cmd.Args.PrivHex) > 0 {
+		pkbytes, err := hex.DecodeString(*cmd.Args.PrivHex)
+		if err != nil {
+			return err
+		}
+		grandchildECPrivKey, _ = btcec.PrivKeyFromBytes(btcec.S256(), pkbytes)
+	} else {
+		seed, err := seed.Load(*cmd.Args.SeedFile, *cmd.Args.Protected)
+		if err != nil {
+			return err
+		}
+		masterXPrivKey, err := crypto.DeriveMasterXPrivKey(seed)
+		if err != nil {
+			return err
+		}
+		grandchildECPrivKey, _, err = crypto.DeriveGrandchildECKeyPair(
+			masterXPrivKey,
+			uint32(*cmd.Args.Index),
+		)
+		if err != nil {
+			return err
+		}
 	}
-	masterXPrivKey, err := crypto.DeriveMasterXPrivKey(seed)
-	if err != nil {
-		return err
-	}
-	grandchildECPrivKey, _, err := crypto.DeriveGrandchildECKeyPair(
-		masterXPrivKey,
-		uint32(*cmd.Args.Index),
-	)
-	if err != nil {
-		return err
-	}
+
 	output, err := codec.ECPrivKeyToPEM(grandchildECPrivKey)
 	if err != nil {
 		return err

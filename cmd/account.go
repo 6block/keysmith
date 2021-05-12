@@ -1,13 +1,15 @@
 package cmd
 
 import (
+	"encoding/hex"
 	"flag"
 	"fmt"
+	"github.com/btcsuite/btcd/btcec"
+	"github.com/dfinity/keysmith/crypto"
+	"github.com/dfinity/keysmith/seed"
 	"os"
 
 	"github.com/dfinity/keysmith/account"
-	"github.com/dfinity/keysmith/crypto"
-	"github.com/dfinity/keysmith/seed"
 )
 
 const ACCOUNT_CMD = "account"
@@ -21,6 +23,7 @@ type AccountCmdArgs struct {
 	SeedFile  *string
 	Index     *uint
 	Protected *bool
+	PrivHex   *string
 }
 
 func NewAccountCmd() *AccountCmd {
@@ -29,27 +32,40 @@ func NewAccountCmd() *AccountCmd {
 		SeedFile:  fset.String("f", "seed.txt", "Seed file."),
 		Index:     fset.Uint("i", 0, "Derivation index."),
 		Protected: fset.Bool("p", false, "Password protection."),
+		PrivHex:   fset.String("x", "", "private key hex str."),
 	}
 	return &AccountCmd{fset, args}
 }
 
 func (cmd *AccountCmd) Run() error {
 	cmd.FlagSet.Parse(os.Args[2:])
-	seed, err := seed.Load(*cmd.Args.SeedFile, *cmd.Args.Protected)
-	if err != nil {
-		return err
+
+	var grandchildECPubKey *btcec.PublicKey
+
+	if len(*cmd.Args.PrivHex) > 0 {
+		pkbytes, err := hex.DecodeString(*cmd.Args.PrivHex)
+		if err != nil {
+			return err
+		}
+		_, grandchildECPubKey = btcec.PrivKeyFromBytes(btcec.S256(), pkbytes)
+	} else {
+		seed, err := seed.Load(*cmd.Args.SeedFile, *cmd.Args.Protected)
+		if err != nil {
+			return err
+		}
+		masterXPrivKey, err := crypto.DeriveMasterXPrivKey(seed)
+		if err != nil {
+			return err
+		}
+		_, grandchildECPubKey, err = crypto.DeriveGrandchildECKeyPair(
+			masterXPrivKey,
+			uint32(*cmd.Args.Index),
+		)
+		if err != nil {
+			return err
+		}
 	}
-	masterXPrivKey, err := crypto.DeriveMasterXPrivKey(seed)
-	if err != nil {
-		return err
-	}
-	_, grandchildECPubKey, err := crypto.DeriveGrandchildECKeyPair(
-		masterXPrivKey,
-		uint32(*cmd.Args.Index),
-	)
-	if err != nil {
-		return err
-	}
+
 	accountId, err := account.FromECPubKey(grandchildECPubKey)
 	if err != nil {
 		return err
