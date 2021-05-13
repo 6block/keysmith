@@ -20,19 +20,21 @@ type AccountCmd struct {
 }
 
 type AccountCmdArgs struct {
-	SeedFile  *string
-	Index     *uint
-	Protected *bool
-	PrivHex   *string
+	SeedFile        *string
+	Index           *uint
+	Protected       *bool
+	PrivHex         *string
+	NoCheckSumBytes *bool
 }
 
 func NewAccountCmd() *AccountCmd {
 	fset := flag.NewFlagSet(ACCOUNT_CMD, flag.ExitOnError)
 	args := &AccountCmdArgs{
-		SeedFile:  fset.String("f", "seed.txt", "Seed file."),
-		Index:     fset.Uint("i", 0, "Derivation index."),
-		Protected: fset.Bool("p", false, "Password protection."),
-		PrivHex:   fset.String("x", "", "private key hex str."),
+		SeedFile:        fset.String("f", "seed.txt", "Seed file."),
+		Index:           fset.Uint("i", 0, "Derivation index."),
+		Protected:       fset.Bool("p", false, "Password protection."),
+		PrivHex:         fset.String("x", "", "private key hex str."),
+		NoCheckSumBytes: fset.Bool("b", false, "Without checksum bytes."),
 	}
 	return &AccountCmd{fset, args}
 }
@@ -70,6 +72,15 @@ func (cmd *AccountCmd) Run() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(accountId.String())
+
+	if *cmd.Args.NoCheckSumBytes {
+		bb, _ := hex.DecodeString(accountId.String())
+		for i := 4; i < len(bb); i++ {
+			fmt.Printf("%d:nat8; ", bb[i])
+		}
+		fmt.Println()
+	} else {
+		fmt.Println(accountId.String())
+	}
 	return nil
 }
